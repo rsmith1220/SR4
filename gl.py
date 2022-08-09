@@ -1,16 +1,16 @@
-#Rebecca Smith
-#Seccion 20
-
 import struct
 from collections import namedtuple
-import random
 import numpy as np
-from obj import Obj
+
 from math import cos, sin, pi
 
-v2 = namedtuple('Point2', ['x', 'y'])
-v3 = namedtuple('Point3', ['x', 'y', 'z'])
-v4 = namedtuple('Point4', ['x', 'y', 'z', 'w'])
+import random
+
+from obj import Obj
+
+V2 = namedtuple('Point2', ['x', 'y'])
+V3 = namedtuple('Point3', ['x', 'y', 'z'])
+V4 = namedtuple('Point4', ['x', 'y', 'z', 'w'])
 
 def char(c):
     #1 byte
@@ -28,23 +28,24 @@ def color(r, g, b):
     return bytes([int(b * 255),
                   int(g * 255),
                   int(r * 255)] )
-                
 
 def baryCoords(A, B, C, P):
-        areaPBC = (B.y - C.y) * (P.x - C.x) + (C.x - B.x) * (P.y - C.y)
-        areaPAC = (C.y - A.y) * (P.x - C.x) + (A.x - C.x) * (P.y - C.y)
-        areaABC = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y)
-        try:
-            # PBC / ABC
-            u = areaPBC / areaABC
-            # PAC / ABC
-            v = areaPAC / areaABC
-            # 1 - u - v
-            w = 1 - u - v
-        except:
-            return -1, -1, -1
-        else:
-            return u, v, w
+
+    areaPBC = (B.y - C.y) * (P.x - C.x) + (C.x - B.x) * (P.y - C.y)
+    areaPAC = (C.y - A.y) * (P.x - C.x) + (A.x - C.x) * (P.y - C.y)
+    areaABC = (B.y - C.y) * (A.x - C.x) + (C.x - B.x) * (A.y - C.y)
+
+    try:
+        # PBC / ABC
+        u = areaPBC / areaABC
+        # PAC / ABC
+        v = areaPAC / areaABC
+        # 1 - u - v
+        w = 1 - u - v
+    except:
+        return -1, -1, -1
+    else:
+        return u, v, w
 
 class Renderer(object):
     def __init__(self, width, height):
@@ -54,14 +55,16 @@ class Renderer(object):
 
         self.clearColor = color(0,0,0)
         self.currColor = color(1,1,1)
-        self.active_shader = None
 
-        self.dirLight = v3(1,0,0)
+        self.active_shader = None
+        self.active_texture = None
+
+        self.dirLight = V3(0,0,1)
 
         self.glViewport(0,0,self.width, self.height)
         
         self.glClear()
-    
+
     def glViewport(self, posX, posY, width, height):
         self.vpX = posX
         self.vpY = posY
@@ -76,7 +79,8 @@ class Renderer(object):
 
     def glClear(self):
         self.pixels = [[ self.clearColor for y in range(self.height)]
-                       for x in range(self.width)]
+                         for x in range(self.width)]
+
         self.zbuffer = [[ float('inf') for y in range(self.height)]
                           for x in range(self.width)]
 
@@ -109,149 +113,86 @@ class Renderer(object):
         yaw   *= pi/180
         roll  *= pi/180
 
-        pitchMat = [[1, 0, 0, 0],
+        pitchMat = np.matrix([[1, 0, 0, 0],
                               [0, cos(pitch),-sin(pitch), 0],
                               [0, sin(pitch), cos(pitch), 0],
-                              [0, 0, 0, 1]]
+                              [0, 0, 0, 1]])
 
-        yawMat = [[cos(yaw), 0, sin(yaw), 0],
+        yawMat = np.matrix([[cos(yaw), 0, sin(yaw), 0],
                             [0, 1, 0, 0],
                             [-sin(yaw), 0, cos(yaw), 0],
-                            [0, 0, 0, 1]]
+                            [0, 0, 0, 1]])
 
-        rollMat = [[cos(roll),-sin(roll), 0, 0],
+        rollMat = np.matrix([[cos(roll),-sin(roll), 0, 0],
                              [sin(roll), cos(roll), 0, 0],
                              [0, 0, 1, 0],
-                             [0, 0, 0, 1]]
+                             [0, 0, 0, 1]])
 
-        #multiplicacion de matrices
-        result11 = [[sum(pitchMat * yawMat for pitchMat, yawMat in zip(tr_row, rot_row))
-                        for rot_row in zip(*yawMat)]
-                                for tr_row in pitchMat]
- 
-        result22 = [[sum(result11 * rollMat for result11, rollMat in zip(r1_row, roll_row))
-                        for roll_row in zip(*rollMat)]
-                                for r1_row in result11]
-
-        return result22
-        
-    def glCreateObjectMatrix(self, translate = v3(0,0,0), rotate = v3(0,0,0), scale = v3(1,1,1)):
-
-        translation = [[1, 0, 0, translate.x],
-                        [0, 1, 0, translate.y],
-                        [0, 0, 1, translate.z],
-                        [0, 0, 0, 1]]
-
-        rotation = [[1, 0, 0, 0],
-                    [0, 1, 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1]]
-
-        scaleMat = [[scale.x, 0, 0, 0],
-                    [0, scale.y, 0, 0],
-                    [0, 0, scale.z, 0],
-                    [0, 0, 0, 1]]
-
-        #multiplicacion de matrices
-        result1 = [[sum(translation * rotation for translation, rotation in zip(tr_row, rot_row))
-                        for rot_row in zip(*rotation)]
-                                for tr_row in translation]
- 
-        result2 = [[sum(result1 * scaleMat for result1, scaleMat in zip(r1_row, scale_row))
-                        for scale_row in zip(*scaleMat)]
-                                for r1_row in result1]
+        return pitchMat * yawMat * rollMat
 
 
- 
- 
-        return result2
+    def glCreateObjectMatrix(self, translate = V3(0,0,0), rotate = V3(0,0,0), scale = V3(1,1,1)):
 
+        translation = np.matrix([[1, 0, 0, translate.x],
+                                 [0, 1, 0, translate.y],
+                                 [0, 0, 1, translate.z],
+                                 [0, 0, 0, 1]])
 
+        rotation = self.glCreateRotationMatrix(rotate.x, rotate.y, rotate.z)
 
+        scaleMat = np.matrix([[scale.x, 0, 0, 0],
+                              [0, scale.y, 0, 0],
+                              [0, 0, scale.z, 0],
+                              [0, 0, 0, 1]])
 
+        return translation * rotation * scaleMat
 
-    def glLoadModel(self, filename, translate = v3(0,0,0), rotate = v3(0,0,0), scale = v3(1,1,1)):
-        model = Obj(filename)
-        modelMatrix = self.glCreateObjectMatrix(translate, rotate, scale)
-        rotate = v3(0, 180, 0), 
-        for face in model.faces:
-            vertCount = len(face)
-
-            for vert in range(vertCount):
-
-                index0 = face[vert][0] - 1
-                index1 = face[(vert + 1) % vertCount ][0] - 1
-                
-                 
-                
-                vert0 = model.vertices[index0]
-                vert1 = model.vertices[index1]
-                
-                x0 = round( (vert0[0]*scale.x)+ translate.x)
-                y0 = round( (vert0[1]*scale.y)+ translate.y)
-                
-                x1 = round( (vert1[0]*scale.x)+ translate.x)
-                y1 = round( (vert1[1]*scale.y)+ translate.y)
-                
-            
-                
-                self.glLine(v2(x0,y0), v2(x1, y1))
-
-        if vertCount == 4:
-            b3 = model.vertices[ face[3][0] - 1]
-            b3 = self.glTransform(b3, modelMatrix)
-            
-
-       
     def glTransform(self, vertex, matrix):
-    
-        v = v4(vertex[0], vertex[1], vertex[2], 1)
+
+        v = V4(vertex[0], vertex[1], vertex[2], 1)
         vt = matrix @ v
         vt = vt.tolist()[0]
-        vf = v3(vt[0] / vt[3],
+        vf = V3(vt[0] / vt[3],
                 vt[1] / vt[3],
                 vt[2] / vt[3])
 
         return vf
 
-    
+
+    def glLoadModel(self, filename, translate = V3(0,0,0), rotate = V3(0,0,0), scale = V3(1,1,1)):
+        model = Obj(filename)
+        modelMatrix = self.glCreateObjectMatrix(translate, rotate, scale)
+
+        for face in model.faces:
+            vertCount = len(face)
+
+            v0 = model.vertices[ face[0][0] - 1]
+            v1 = model.vertices[ face[1][0] - 1]
+            v2 = model.vertices[ face[2][0] - 1]
+
+            v0 = self.glTransform(v0, modelMatrix)
+            v1 = self.glTransform(v1, modelMatrix)
+            v2 = self.glTransform(v2, modelMatrix)
+
+            vt0 = model.texcoords[face[0][1] - 1]
+            vt1 = model.texcoords[face[1][1] - 1]
+            vt2 = model.texcoords[face[2][1] - 1]
+
+            vn0 = model.normals[face[0][2] - 1]
+            vn1 = model.normals[face[1][2] - 1]
+            vn2 = model.normals[face[2][2] - 1]
+
+            self.glTriangle_bc(v0, v1, v2, texCoords = (vt0, vt1, vt2), normals = (vn0, vn1, vn2))
+
+            if vertCount == 4:
+                v3 = model.vertices[ face[3][0] - 1]
+                v3 = self.glTransform(v3, modelMatrix)
+                vt3 = model.texcoords[face[3][1] - 1]
+                vn3 = model.normals[face[3][2] - 1]
 
 
-    def glTriangle_bc(self, A, B, C, clr = None):
-        # bounding box
-        minX = round(min(A.x, B.x, C.x))
-        minY = round(min(A.y, B.y, C.y))
-        maxX = round(max(A.x, B.x, C.x))
-        maxY = round(max(A.y, B.y, C.y))
+                self.glTriangle_bc(v0, v2, v3, texCoords = (vt0, vt2, vt3), normals = (vn0, vn2, vn3))
 
-        triangleNormal = np.cross( np.subtract(B, A), np.subtract(C,A))
-        # normalizar
-        triangleNormal = triangleNormal / np.linalg.norm(triangleNormal)
-
-
-        for x in range(minX, maxX + 1):
-            for y in range(minY, maxY + 1):
-                def glTriangle_bc(self, A, B, C, clr = None):
-
-                    if z < self.zbuffer[x][y]:
-                        self.zbuffer[x][y] = z
-                        self.glPoint(x,y, clr)
-
-                        if self.active_shader:
-                            r, g, b = self.active_shader(self,
-                            baryCoords=(u,v,w),
-                            vColor = clr or self.currColor,
-                            triangleNormal = triangleNormal)
-
-
-
-                            self.glPoint(x, y, color(r,g,b))
-                        else:
-                            self.glPoint(x,y, clr)
-
-
-
-                
 
 
 
@@ -312,15 +253,100 @@ class Renderer(object):
                     y -= 1
                 
                 limit += 1
-    
-
-    
-
-       
 
 
+    def glTriangle_std(self, A, B, C, clr = None):
+        
+        if A.y < B.y:
+            A, B = B, A
+        if A.y < C.y:
+            A, C = C, A
+        if B.y < C.y:
+            B, C = C, B
+
+        self.glLine(A,B, clr)
+        self.glLine(B,C, clr)
+        self.glLine(C,A, clr)
+
+        def flatBottom(vA,vB,vC):
+            try:
+                mBA = (vB.x - vA.x) / (vB.y - vA.y)
+                mCA = (vC.x - vA.x) / (vC.y - vA.y)
+            except:
+                pass
+            else:
+                x0 = vB.x
+                x1 = vC.x
+                for y in range(int(vB.y), int(vA.y)):
+                    self.glLine(V2(x0, y), V2(x1, y), clr)
+                    x0 += mBA
+                    x1 += mCA
+
+        def flatTop(vA,vB,vC):
+            try:
+                mCA = (vC.x - vA.x) / (vC.y - vA.y)
+                mCB = (vC.x - vB.x) / (vC.y - vB.y)
+            except:
+                pass
+            else:
+                x0 = vA.x
+                x1 = vB.x
+                for y in range(int(vA.y), int(vC.y), -1):
+                    self.glLine(V2(x0, y), V2(x1, y), clr)
+                    x0 -= mCA
+                    x1 -= mCB
+
+        if B.y == C.y:
+            # Parte plana abajo
+            flatBottom(A,B,C)
+        elif A.y == B.y:
+            # Parte plana arriba
+            flatTop(A,B,C)
+        else:
+            # Dibujo ambos tipos de triangulos
+            # Teorema de intercepto
+            D = V2( A.x + ((B.y - A.y) / (C.y - A.y)) * (C.x - A.x), B.y)
+            flatBottom(A,B,D)
+            flatTop(B,D,C)
 
 
+    def glTriangle_bc(self, A, B, C, texCoords = (), normals = (), clr = None):
+        # bounding box
+        minX = round(min(A.x, B.x, C.x))
+        minY = round(min(A.y, B.y, C.y))
+        maxX = round(max(A.x, B.x, C.x))
+        maxY = round(max(A.y, B.y, C.y))
+
+        triangleNormal = np.cross( np.subtract(B, A), np.subtract(C,A))
+        # normalizar
+        triangleNormal = triangleNormal / np.linalg.norm(triangleNormal)
+
+
+        for x in range(minX, maxX + 1):
+            for y in range(minY, maxY + 1):
+                u, v, w = baryCoords(A, B, C, V2(x, y))
+
+                if 0<=u and 0<=v and 0<=w:
+
+                    z = A.z * u + B.z * v + C.z * w
+
+                    if 0<=x<self.width and 0<=y<self.height:
+                        if z < self.zbuffer[x][y]:
+                            self.zbuffer[x][y] = z
+
+                            if self.active_shader:
+                                r, g, b = self.active_shader(self,
+                                                             baryCoords=(u,v,w),
+                                                             vColor = clr or self.currColor,
+                                                             texCoords = texCoords,
+                                                             normals = normals,
+                                                             triangleNormal = triangleNormal)
+
+
+
+                                self.glPoint(x, y, color(r,g,b))
+                            else:
+                                self.glPoint(x,y, clr)
 
 
 
